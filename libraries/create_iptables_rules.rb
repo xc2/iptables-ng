@@ -21,9 +21,35 @@
 # This was implemented as a internal-only provider.
 # Apparently, calling a LWRP from a LWRP doesnt' really work with
 # subscribes / notifies. Therefore, using this workaround.
+require 'shellwords'
 
 module Iptables
   module Manage
+    def extract_current(ip_version, table)
+      binary = ip_version == 6 ? 'ip6tables-save' : 'iptables-save'
+      chains = Mash.new
+      rules = []
+      so = shell_out("#{binary} -t #{table}")
+      unless so.exitstatus == 0
+        return {:chains => chains, :rules => rules}
+      end
+      lines = so.stdout.split("\n")
+
+      lines.each do |line|
+        token = line[0]
+        next if token == "#"
+        next if token == "*"
+        if token == ":"
+          chain, policy, _ = line[1..].shellsplit
+          chains[chain] = policy
+          next
+        end
+        if token == "-"
+          rules << line
+        end
+      end
+      return {:chains => chains, :rules => rules}
+    end
     def create_iptables_rules(ip_version)
       rules = {}
 
@@ -52,6 +78,7 @@ module Iptables
       iptables_restore = ''
       rules.each do |table, chains|
         iptables_restore << "*#{table}\n"
+        existing = extract_current(ip_version, table)
 
         # Get default policies and rules for this chain
         default_policies = chains.each_with_object({}) do |rule, new_chain|
@@ -67,9 +94,21 @@ module Iptables
           iptables_restore << ":#{chain} #{policy['default'].chomp}\n"
         end
 
+        existing[:chains].each do |chain, policy|
+          if default_policies[chain].nil?
+            iptables_restore << ":#{chain} #{policy.chomp}\n"
+          end
+        end
+
         # Apply rules for this chain, but sort before adding
         all_chain_rules.each do |_chain, chain_rules|
           chain_rules.sort.each { |r| iptables_restore << "#{r.last.chomp}\n" }
+        end
+
+        existing[:rules].each do |rule|
+          unless rule.include?('iptables-ng::chef')
+            iptables_restore << "#{rule}\n"
+          end
         end
 
         iptables_restore << "COMMIT\n"

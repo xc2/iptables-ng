@@ -41,7 +41,7 @@ def edit_rule(exec_action)
     rule_path = new_resource.path_for_ip_version(ip_version)
 
     rule_content = Array(new_resource.rule).map do |rule|
-      "--append #{new_resource.chain} #{rule.chomp}"
+      "--append #{new_resource.chain} -m comment --comment iptables-ng::chef #{rule.chomp}"
     end.join("\n")
 
     directory rule_path do
