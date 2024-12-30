@@ -100,15 +100,18 @@ module Iptables
           end
         end
 
-        # Apply rules for this chain, but sort before adding
-        all_chain_rules.each do |_chain, chain_rules|
-          chain_rules.sort.each { |r| iptables_restore << "#{r.last.chomp}\n" }
-        end
-
         existing[:rules].each do |rule|
           unless rule.include?('iptables-ng::chef')
             iptables_restore << "#{rule}\n"
           end
+        end
+        # Apply rules for this chain, but sort before adding
+        all_chain_rules.each do |_chain, chain_rules|
+          chain_rules = chain_rules.sort
+          a, b = chain_rules.partition { |k, _| k.start_with?('9') }
+          b.each { |r| iptables_restore << "#{r.last.chomp}\n" }
+          a.each { |r| iptables_restore << "#{r.last.chomp}\n" }
+          #chain_rules.sort.each { |r| iptables_restore << "#{r.last.chomp}\n" }
         end
 
         iptables_restore << "COMMIT\n"
